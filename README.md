@@ -1,6 +1,6 @@
 # lvm-operator
 
-Operator that manages Topolvm
+Operator that manages TopoLVM.
 
 # Contents
 
