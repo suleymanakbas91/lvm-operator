@@ -74,12 +74,12 @@ func (r *VGReconciler) addDevicesToVG(ctx context.Context, vgs []VolumeGroup, vg
 // getAvailableDevicesForVG determines the available devices that can be used to create a volume group.
 func (r *VGReconciler) getAvailableDevicesForVG(ctx context.Context, blockDevices []internal.BlockDevice, vgs []VolumeGroup, volumeGroup *lvmv1alpha1.LVMVolumeGroup) ([]internal.BlockDevice, error) {
 	// filter devices based on DeviceSelector.Paths if specified
-	availableDevices, err := r.filterMatchingDevices(ctx, blockDevices, vgs, volumeGroup)
+	matchingDevices, err := r.filterMatchingDevices(ctx, blockDevices, vgs, volumeGroup)
 	if err != nil {
 		return nil, fmt.Errorf("failed to filter matching devices for volume group %s: %w", volumeGroup.GetName(), err)
 	}
 
-	return r.filterAvailableDevices(ctx, availableDevices), nil
+	return r.filterAvailableDevices(ctx, matchingDevices), nil
 }
 
 // filterAvailableDevices returns:
@@ -128,23 +128,21 @@ func (r *VGReconciler) filterMatchingDevices(ctx context.Context, blockDevices [
 		}
 
 		// If Paths is specified, treat it as required paths
-		if len(volumeGroup.Spec.DeviceSelector.Paths) > 0 {
-			for _, path := range volumeGroup.Spec.DeviceSelector.Paths {
-				blockDevice, err := getValidDevice(path, blockDevices, vgs, volumeGroup)
-				if err != nil {
-					// An error for required devices is critical
-					return nil, fmt.Errorf("unable to validate device %s: %v", path, err)
-				}
-
-				// Check if we should skip this device
-				if blockDevice.DevicePath == "" {
-					logger.Info(fmt.Sprintf("skipping required device that is already part of volume group %s: %s", volumeGroup.Name, path))
-					devicesAlreadyInVG = true
-					continue
-				}
-
-				filteredBlockDevices = append(filteredBlockDevices, blockDevice)
+		for _, path := range volumeGroup.Spec.DeviceSelector.Paths {
+			blockDevice, err := getValidDevice(path, blockDevices, vgs, volumeGroup)
+			if err != nil {
+				// An error for required devices is critical
+				return nil, fmt.Errorf("unable to validate device %s: %v", path, err)
 			}
+
+			// Check if we should skip this device
+			if blockDevice.DevicePath == "" {
+				logger.Info(fmt.Sprintf("skipping required device that is already part of volume group %s: %s", volumeGroup.Name, path))
+				devicesAlreadyInVG = true
+				continue
+			}
+
+			filteredBlockDevices = append(filteredBlockDevices, blockDevice)
 		}
 
 		// Check for any optional paths

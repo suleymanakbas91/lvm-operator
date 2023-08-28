@@ -133,7 +133,7 @@ func (r *VGReconciler) reconcile(ctx context.Context, volumeGroup *lvmv1alpha1.L
 		return ctrl.Result{}, fmt.Errorf("failed to get block devices for volumegroup %s: %w", volumeGroup.GetName(), err)
 	}
 
-	logger.Info("listing available and delayed devices", "availableDevices", availableDevices)
+	logger.Info("listing available devices", "availableDevices", availableDevices)
 
 	// If there are no available devices, that could mean either
 	// - There is no available devices to attach to the volume group
@@ -163,6 +163,10 @@ func (r *VGReconciler) reconcile(ctx context.Context, volumeGroup *lvmv1alpha1.L
 				logger.Error(err, "failed to set status to failed", "VGName", volumeGroup.GetName())
 			}
 			return ctrl.Result{}, err
+		}
+
+		if err := r.applyLVMDconfig(ctx, volumeGroup, lvmdConfig, existingLvmdConfig); err != nil {
+			return reconcileAgain, err
 		}
 
 		logger.Info("all the available devices are attached to the volume group", "VGName", volumeGroup.Name)
@@ -200,6 +204,19 @@ func (r *VGReconciler) reconcile(ctx context.Context, volumeGroup *lvmv1alpha1.L
 		return ctrl.Result{}, err
 	}
 
+	if err := r.applyLVMDconfig(ctx, volumeGroup, lvmdConfig, existingLvmdConfig); err != nil {
+		return reconcileAgain, err
+	}
+
+	if err := r.setVolumeGroupReadyStatus(ctx, volumeGroup.Name); err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to set status for volume group %s to ready: %w", volumeGroup.Name, err)
+	}
+
+	return reconcileAgain, nil
+}
+
+func (r *VGReconciler) applyLVMDconfig(ctx context.Context, volumeGroup *lvmv1alpha1.LVMVolumeGroup, lvmdConfig *lvmdCMD.Config, existingLvmdConfig lvmdCMD.Config) error {
+	logger := log.FromContext(ctx)
 	// Add the volume group to device classes inside lvmd config if not exists
 	found := false
 	for _, deviceClass := range lvmdConfig.DeviceClasses {
@@ -231,16 +248,12 @@ func (r *VGReconciler) reconcile(ctx context.Context, volumeGroup *lvmv1alpha1.L
 			if err := r.setVolumeGroupFailedStatus(ctx, volumeGroup.Name, err); err != nil {
 				logger.Error(err, "failed to set status to failed", "VGName", volumeGroup.GetName())
 			}
-			return ctrl.Result{}, err
+			return err
 		}
 		logger.Info("updated lvmd config", "VGName", volumeGroup.Name)
 	}
 
-	if err := r.setVolumeGroupReadyStatus(ctx, volumeGroup.Name); err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to set status for volume group %s to ready: %w", volumeGroup.Name, err)
-	}
-
-	return reconcileAgain, nil
+	return nil
 }
 
 func (r *VGReconciler) processDelete(ctx context.Context, volumeGroup *lvmv1alpha1.LVMVolumeGroup) error {
