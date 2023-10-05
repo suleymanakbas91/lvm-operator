@@ -31,6 +31,8 @@ import (
 	"github.com/openshift/lvm-operator/internal/controllers/vgmanager/lvm"
 	"github.com/openshift/lvm-operator/internal/controllers/vgmanager/lvmd"
 	"github.com/openshift/lvm-operator/internal/controllers/vgmanager/wipefs"
+	topolvmv1 "github.com/topolvm/topolvm/api/v1"
+
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -151,25 +153,6 @@ func (r *Reconciler) reconcile(
 		}
 	}
 
-	// Read the lvmd config file
-	lvmdConfig, err := r.LVMD.Load()
-	if err != nil {
-		err = fmt.Errorf("failed to read the lvmd config file: %w", err)
-		if _, err := r.setVolumeGroupFailedStatus(ctx, volumeGroup, nil, err); err != nil {
-			logger.Error(err, "failed to set status to failed")
-		}
-		return ctrl.Result{}, err
-	}
-
-	lvmdConfigWasMissing := false
-	if lvmdConfig == nil {
-		lvmdConfigWasMissing = true
-		lvmdConfig = &lvmd.Config{
-			SocketName: constants.DefaultLVMdSocket,
-		}
-	}
-	existingLvmdConfig := *lvmdConfig
-
 	blockDevices, err := r.LSBLK.ListBlockDevices()
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to list block devices: %w", err)
@@ -204,9 +187,7 @@ func (r *Reconciler) reconcile(
 	vgExistsInLVM := false
 	for _, vg := range vgs {
 		if volumeGroup.Name == vg.Name {
-			if len(vg.PVs) > 0 {
-				vgExistsInLVM = true
-			}
+			vgExistsInLVM = true
 		}
 	}
 
@@ -237,23 +218,25 @@ func (r *Reconciler) reconcile(
 
 		msg := "all the available devices are attached to the volume group"
 		logger.Info(msg)
+
+		if err := r.applyLVMDConfig(ctx, volumeGroup, devices); err != nil {
+			return reconcileAgain, err
+		}
+
 		if updated, err := r.setVolumeGroupReadyStatus(ctx, volumeGroup, devices); err != nil {
 			return ctrl.Result{}, fmt.Errorf("failed to set status for volume group %s to ready: %w", volumeGroup.Name, err)
 		} else if updated {
 			r.NormalEvent(ctx, volumeGroup, EventReasonVolumeGroupReady, msg)
 		}
 
-		return reconcileAgain, nil
-	} else {
-		if updated, err := r.setVolumeGroupProgressingStatus(ctx, volumeGroup, devices); err != nil {
-			logger.Error(err, "failed to set status to progressing")
-		} else if updated {
-			logger.Info("new available devices were discovered and status was updated to progressing")
-			return ctrl.Result{Requeue: true}, nil
-		}
+		return ctrl.Result{}, nil
 	}
 
 	logger.Info("new available devices discovered", "available", devices.Available)
+
+	if _, err := r.setVolumeGroupProgressingStatus(ctx, volumeGroup, devices); err != nil {
+		logger.Error(err, "failed to set status to progressing")
+	}
 
 	// Create VG/extend VG
 	if err = r.addDevicesToVG(ctx, vgs, volumeGroup.Name, devices.Available); err != nil {
@@ -284,6 +267,43 @@ func (r *Reconciler) reconcile(
 		}
 		return ctrl.Result{}, err
 	}
+
+	if err := r.applyLVMDConfig(ctx, volumeGroup, devices); err != nil {
+		return reconcileAgain, err
+	}
+
+	if updated, err := r.setVolumeGroupReadyStatus(ctx, volumeGroup, devices); err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to set status for volume group %s to ready: %w", volumeGroup.Name, err)
+	} else if updated {
+		msg := "all the available devices are attached to the volume group"
+		r.NormalEvent(ctx, volumeGroup, EventReasonVolumeGroupReady, msg)
+		return ctrl.Result{}, nil
+	}
+
+	return reconcileAgain, nil
+}
+
+func (r *Reconciler) applyLVMDConfig(ctx context.Context, volumeGroup *lvmv1alpha1.LVMVolumeGroup, devices *FilteredBlockDevices) error {
+	logger := log.FromContext(ctx).WithValues("VGName", volumeGroup.Name)
+
+	// Read the lvmd config file
+	lvmdConfig, err := r.LVMD.Load()
+	if err != nil {
+		err = fmt.Errorf("failed to read the lvmd config file: %w", err)
+		if _, err := r.setVolumeGroupFailedStatus(ctx, volumeGroup, nil, err); err != nil {
+			logger.Error(err, "failed to set status to failed")
+		}
+		return err
+	}
+
+	lvmdConfigWasMissing := false
+	if lvmdConfig == nil {
+		lvmdConfigWasMissing = true
+		lvmdConfig = &lvmd.Config{
+			SocketName: constants.DefaultLVMdSocket,
+		}
+	}
+	existingLvmdConfig := *lvmdConfig
 
 	// Add the volume group to device classes inside lvmd config if not exists
 	found := false
@@ -323,21 +343,14 @@ func (r *Reconciler) reconcile(
 			if _, err := r.setVolumeGroupFailedStatus(ctx, volumeGroup, devices, err); err != nil {
 				logger.Error(err, "failed to set status to failed")
 			}
-			return ctrl.Result{}, err
+			return err
 		}
 		msg := "updated lvmd config with new deviceClasses"
 		logger.Info(msg)
 		r.NormalEvent(ctx, volumeGroup, EventReasonLVMDConfigUpdated, msg)
 	}
 
-	if updated, err := r.setVolumeGroupReadyStatus(ctx, volumeGroup, devices); err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to set status for volume group %s to ready: %w", volumeGroup.Name, err)
-	} else if updated {
-		msg := "all the available devices are attached to the volume group"
-		r.NormalEvent(ctx, volumeGroup, EventReasonVolumeGroupReady, msg)
-	}
-
-	return reconcileAgain, nil
+	return nil
 }
 
 func (r *Reconciler) processDelete(ctx context.Context, volumeGroup *lvmv1alpha1.LVMVolumeGroup) error {
@@ -450,6 +463,12 @@ func (r *Reconciler) validateLVs(ctx context.Context, volumeGroup *lvmv1alpha1.L
 		return nil
 	}
 
+	// Only validate the LVs with corresponding LogicalVolume CRs, as there could be inactive LVs leftover from a previous installation
+	lvCRList := new(topolvmv1.LogicalVolumeList)
+	if err := r.Client.List(ctx, lvCRList); err != nil {
+		return fmt.Errorf("could not list LogicalVolume CRs: %w", err)
+	}
+
 	resp, err := r.LVM.ListLVs(volumeGroup.Name)
 	if err != nil {
 		return fmt.Errorf("could not get logical volumes found inside volume group, volume group content is degraded or corrupt: %w", err)
@@ -467,6 +486,16 @@ func (r *Reconciler) validateLVs(ctx context.Context, volumeGroup *lvmv1alpha1.L
 		thinPoolExists := false
 		for _, lv := range report.Lv {
 			if lv.Name != volumeGroup.Spec.ThinPoolConfig.Name {
+				continue
+			}
+			foundInCRs := false
+			for _, lvCR := range lvCRList.Items {
+				if lvCR.Status.VolumeID == lv.Name {
+					foundInCRs = true
+				}
+			}
+			if !foundInCRs {
+				logger.Info("skipping validation of lv as it does not have a corresponding LogicalVolume CR", "lv", lv.Name)
 				continue
 			}
 			thinPoolExists = true

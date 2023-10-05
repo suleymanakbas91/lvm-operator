@@ -24,3 +24,11 @@ rules:
     - subjectaccessreviews
   verbs:
     - create
+- apiGroups:
+    - topolvm.io
+  resources:
+    - logicalvolumes
+  verbs:
+    - get
+    - list
+    - watch

@@ -591,6 +591,14 @@ spec:
           - subjectaccessreviews
           verbs:
           - create
+        - apiGroups:
+          - topolvm.io
+          resources:
+          - logicalvolumes
+          verbs:
+          - get
+          - list
+          - watch
         serviceAccountName: vg-manager
       deployments:
       - label:
