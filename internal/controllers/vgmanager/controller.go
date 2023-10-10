@@ -31,8 +31,6 @@ import (
 	"github.com/openshift/lvm-operator/internal/controllers/vgmanager/lvm"
 	"github.com/openshift/lvm-operator/internal/controllers/vgmanager/lvmd"
 	"github.com/openshift/lvm-operator/internal/controllers/vgmanager/wipefs"
-	topolvmv1 "github.com/topolvm/topolvm/api/v1"
-
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -463,12 +461,6 @@ func (r *Reconciler) validateLVs(ctx context.Context, volumeGroup *lvmv1alpha1.L
 		return nil
 	}
 
-	// Only validate the LVs with corresponding LogicalVolume CRs, as there could be inactive LVs leftover from a previous installation
-	lvCRList := new(topolvmv1.LogicalVolumeList)
-	if err := r.Client.List(ctx, lvCRList); err != nil {
-		return fmt.Errorf("could not list LogicalVolume CRs: %w", err)
-	}
-
 	resp, err := r.LVM.ListLVs(volumeGroup.Name)
 	if err != nil {
 		return fmt.Errorf("could not get logical volumes found inside volume group, volume group content is degraded or corrupt: %w", err)
@@ -488,17 +480,8 @@ func (r *Reconciler) validateLVs(ctx context.Context, volumeGroup *lvmv1alpha1.L
 			if lv.Name != volumeGroup.Spec.ThinPoolConfig.Name {
 				continue
 			}
-			foundInCRs := false
-			for _, lvCR := range lvCRList.Items {
-				if lvCR.Status.VolumeID == lv.Name {
-					foundInCRs = true
-				}
-			}
-			if !foundInCRs {
-				logger.Info("skipping validation of lv as it does not have a corresponding LogicalVolume CR", "lv", lv.Name)
-				continue
-			}
 			thinPoolExists = true
+
 			lvAttr, err := ParsedLvAttr(lv.LvAttr)
 			if err != nil {
 				return fmt.Errorf("could not parse lv_attr from logical volume %s: %w", lv.Name, err)
