@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"strings"
+	"time"
 
 	"github.com/openshift/lvm-operator/internal/controllers/constants"
 	"github.com/pkg/errors"
@@ -116,7 +117,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		logger.Info("Event published for the PVC", "PVC", req.NamespacedName)
 	}
 
-	return ctrl.Result{}, nil
+	return ctrl.Result{RequeueAfter: 15 * time.Second}, nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
