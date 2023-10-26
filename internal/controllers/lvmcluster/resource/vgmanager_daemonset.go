@@ -155,6 +155,26 @@ func newVGManagerDaemonset(lvmCluster *lvmv1alpha1.LVMCluster, namespace, vgImag
 			corev1.ResourceMemory: resource.MustParse(constants.VgManagerMemRequest),
 		},
 	}
+
+	initCmd := []string{"/usr/bin/nsenter", "-m", "-u", "-i", "-n", "-p", "-t", "1"}
+
+	initContainers := []corev1.Container{
+		{
+			Name:    "user",
+			Image:   vgImage,
+			Command: initCmd,
+			Args: []string{
+				"/usr/bin/bash",
+				"-c",
+				"groupadd -g 2040 lvmgroup && useradd -u 2060 -g 2040 lvms && echo 'lvms ALL=(root) NOPASSWD: /usr/sbin/lv*, /usr/sbin/vg*,' > /etc/sudoers.d/lvms-user",
+			},
+			SecurityContext: &corev1.SecurityContext{
+				Privileged: ptr.To[bool](true),
+				RunAsUser:  ptr.To(int64(0)),
+			},
+		},
+	}
+
 	containers := []corev1.Container{
 		{
 			Name:    VGManagerUnit,
@@ -162,7 +182,8 @@ func newVGManagerDaemonset(lvmCluster *lvmv1alpha1.LVMCluster, namespace, vgImag
 			Command: command,
 			SecurityContext: &corev1.SecurityContext{
 				Privileged: ptr.To(true),
-				RunAsUser:  ptr.To(int64(0)),
+				RunAsUser:  ptr.To(int64(2060)),
+				RunAsGroup: ptr.To(int64(2040)),
 			},
 			VolumeMounts: volumeMounts,
 			Resources:    resourceRequirements,
@@ -218,8 +239,9 @@ func newVGManagerDaemonset(lvmCluster *lvmv1alpha1.LVMCluster, namespace, vgImag
 				},
 
 				Spec: corev1.PodSpec{
-					Volumes:    volumes,
-					Containers: containers,
+					Volumes:        volumes,
+					InitContainers: initContainers,
+					Containers:     containers,
 					// to read /proc/1/mountinfo
 					HostPID:            true,
 					Tolerations:        tolerations,

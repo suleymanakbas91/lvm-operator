@@ -23,7 +23,7 @@ import (
 )
 
 var (
-	nsenterPath = "/usr/bin/nsenter"
+// nsenterPath = "/usr/bin/nsenter"
 )
 
 // Executor is the interface for running exec commands
@@ -43,8 +43,7 @@ func (*CommandExecutor) ExecuteCommandWithOutput(command string, arg ...string) 
 
 // ExecuteCommandWithOutputAsHost executes a command with output using nsenter
 func (*CommandExecutor) ExecuteCommandWithOutputAsHost(command string, arg ...string) (string, error) {
-	args := append([]string{"-m", "-u", "-i", "-n", "-p", "-t", "1", command}, arg...)
-	cmd := exec.Command(nsenterPath, args...)
+	cmd := exec.Command(command, arg...)
 	return runCommandWithOutput(cmd)
 }
 
