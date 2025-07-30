@@ -3,7 +3,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.17.3
+    controller-gen.kubebuilder.io/version: v0.14.0
   name: lvmclusters.lvm.topolvm.io
 spec:
   group: lvm.topolvm.io
@@ -79,8 +79,10 @@ spec:
                           type: object
                         fstype:
                           default: xfs
-                          description: FilesystemType sets the filesystem the device
-                            should use. Select either `ext4` or `xfs`.
+                          description: |-
+                            FilesystemType sets the default filesystem type for persistent volumes created from this device class.
+                            This determines the filesystem used when provisioning PVCs with volumeMode: Filesystem.
+                            Select either `ext4` or `xfs`. This does not filter devices during discovery.
                           enum:
                           - xfs
                           - ext4
@@ -93,96 +95,11 @@ spec:
                           pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
                           type: string
                         nodeSelector:
+                          $ref: '#/definitions/k8s.io~1api~1core~1v1~0NodeSelector'
                           description: NodeSelector contains the configuration to
                             choose the nodes on which you want to create the LVM volume
                             group. If this field is not configured, all nodes without
                             no-schedule taints are considered.
-                          properties:
-                            nodeSelectorTerms:
-                              description: Required. A list of node selector terms.
-                                The terms are ORed.
-                              items:
-                                description: |-
-                                  A null or empty node selector term matches no objects. The requirements of
-                                  them are ANDed.
-                                  The TopologySelectorTerm type implements a subset of the NodeSelectorTerm.
-                                properties:
-                                  matchExpressions:
-                                    description: A list of node selector requirements
-                                      by node's labels.
-                                    items:
-                                      description: |-
-                                        A node selector requirement is a selector that contains values, a key, and an operator
-                                        that relates the key and values.
-                                      properties:
-                                        key:
-                                          description: The label key that the selector
-                                            applies to.
-                                          type: string
-                                        operator:
-                                          description: |-
-                                            Represents a key's relationship to a set of values.
-                                            Valid operators are In, NotIn, Exists, DoesNotExist. Gt, and Lt.
-                                          type: string
-                                        values:
-                                          description: |-
-                                            An array of string values. If the operator is In or NotIn,
-                                            the values array must be non-empty. If the operator is Exists or DoesNotExist,
-                                            the values array must be empty. If the operator is Gt or Lt, the values
-                                            array must have a single element, which will be interpreted as an integer.
-                                            This array is replaced during a strategic merge patch.
-                                          items:
-                                            type: string
-                                          type: array
-                                          x-kubernetes-list-type: atomic
-                                      required:
-                                      - key
-                                      - operator
-                                      type: object
-                                    type: array
-                                    x-kubernetes-list-type: atomic
-                                  matchFields:
-                                    description: A list of node selector requirements
-                                      by node's fields.
-                                    items:
-                                      description: |-
-                                        A node selector requirement is a selector that contains values, a key, and an operator
-                                        that relates the key and values.
-                                      properties:
-                                        key:
-                                          description: The label key that the selector
-                                            applies to.
-                                          type: string
-                                        operator:
-                                          description: |-
-                                            Represents a key's relationship to a set of values.
-                                            Valid operators are In, NotIn, Exists, DoesNotExist. Gt, and Lt.
-                                          type: string
-                                        values:
-                                          description: |-
-                                            An array of string values. If the operator is In or NotIn,
-                                            the values array must be non-empty. If the operator is Exists or DoesNotExist,
-                                            the values array must be empty. If the operator is Gt or Lt, the values
-                                            array must have a single element, which will be interpreted as an integer.
-                                            This array is replaced during a strategic merge patch.
-                                          items:
-                                            type: string
-                                          type: array
-                                          x-kubernetes-list-type: atomic
-                                      required:
-                                      - key
-                                      - operator
-                                      type: object
-                                    type: array
-                                    x-kubernetes-list-type: atomic
-                                type: object
-                                x-kubernetes-map-type: atomic
-                              type: array
-                              x-kubernetes-list-type: atomic
-                          required:
-                          - nodeSelectorTerms
-                          type: object
-                          x-kubernetes-map-type: atomic
                         thinPoolConfig:
                           description: ThinPoolConfig contains the configuration to
                             create a thin pool in the LVM volume group. If you exclude
@@ -259,41 +176,7 @@ spec:
               tolerations:
                 description: Tolerations to apply to nodes to act on
                 items:
-                  description: |-
-                    The pod this Toleration is attached to tolerates any taint that matches
-                    the triple <key,value,effect> using the matching operator <operator>.
-                  properties:
-                    effect:
-                      description: |-
-                        Effect indicates the taint effect to match. Empty means match all taint effects.
-                        When specified, allowed values are NoSchedule, PreferNoSchedule and NoExecute.
-                      type: string
-                    key:
-                      description: |-
-                        Key is the taint key that the toleration applies to. Empty means match all taint keys.
-                        If the key is empty, operator must be Exists; this combination means to match all values and all keys.
-                      type: string
-                    operator:
-                      description: |-
-                        Operator represents a key's relationship to the value.
-                        Valid operators are Exists and Equal. Defaults to Equal.
-                        Exists is equivalent to wildcard for value, so that a pod can
-                        tolerate all taints of a particular category.
-                      type: string
-                    tolerationSeconds:
-                      description: |-
-                        TolerationSeconds represents the period of time the toleration (which must be
-                        of effect NoExecute, otherwise this field is ignored) tolerates the taint. By default,
-                        it is not set, which means tolerate the taint forever (do not evict). Zero and
-                        negative values will be treated as 0 (evict immediately) by the system.
-                      format: int64
-                      type: integer
-                    value:
-                      description: |-
-                        Value is the taint value the toleration matches to.
-                        If the operator is Exists, the value should be empty, otherwise just a regular string.
-                      type: string
-                  type: object
+                  $ref: '#/definitions/k8s.io~1api~1core~1v1~0Toleration'
                 type: array
             type: object
           status:
@@ -302,8 +185,16 @@ spec:
               conditions:
                 description: Conditions describes the state of the resource.
                 items:
-                  description: Condition contains details for one aspect of the current
-                    state of this API Resource.
+                  description: "Condition contains details for one aspect of the current
+                    state of this API Resource.\n---\nThis struct is intended for
+                    direct use as an array at the field path .status.conditions.  For
+                    example,\n\n\n\ttype FooStatus struct{\n\t    // Represents the
+                    observations of a foo's current state.\n\t    // Known .status.conditions.type
+                    are: \"Available\", \"Progressing\", and \"Degraded\"\n\t    //
+                    +patchMergeKey=type\n\t    // +patchStrategy=merge\n\t    // +listType=map\n\t
+                    \   // +listMapKey=type\n\t    Conditions []metav1.Condition `json:\"conditions,omitempty\"
+                    patchStrategy:\"merge\" patchMergeKey:\"type\" protobuf:\"bytes,1,rep,name=conditions\"`\n\n\n\t
+                    \   // other fields\n\t}"
                   properties:
                     lastTransitionTime:
                       description: |-
@@ -344,7 +235,12 @@ spec:
                       - Unknown
                       type: string
                     type:
-                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      description: |-
+                        type of condition in CamelCase or in foo.example.com/CamelCase.
+                        ---
+                        Many .condition.type values are consistent across resources like Available, but because arbitrary conditions can be
+                        useful (see .node.status.conditions), the ability to deconflict is important.
+                        The regex it matches is (dns1123SubdomainFmt/)?(qualifiedNameFmt)
                       maxLength: 316
                       pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
                       type: string
@@ -424,8 +320,6 @@ spec:
                             description: Status tells if the volume group was created
                               on the node
                             type: string
-                        required:
-                        - deviceDiscoveryPolicy
                         type: object
                       type: array
                   type: object
