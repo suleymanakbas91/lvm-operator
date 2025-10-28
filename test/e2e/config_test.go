@@ -23,6 +23,7 @@ import (
 
 	snapapi "github.com/kubernetes-csi/external-snapshotter/client/v8/apis/volumesnapshot/v1"
 	configv1 "github.com/openshift/api/config/v1"
+	routev1 "github.com/openshift/api/route/v1"
 	secv1 "github.com/openshift/api/security/v1"
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	topolvmv1 "github.com/topolvm/topolvm/api/v1"
@@ -84,6 +85,7 @@ func init() {
 	utilruntime.Must(snapapi.AddToScheme(scheme))
 	utilruntime.Must(secv1.Install(scheme))
 	utilruntime.Must(configv1.Install(scheme))
+	utilruntime.Must(routev1.Install(scheme))
 	utilruntime.Must(monitoringv1.AddToScheme(scheme))
 	utilruntime.Must(apiextensionsv1.AddToScheme(scheme))
 
